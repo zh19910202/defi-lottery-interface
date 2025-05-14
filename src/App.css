@@ -1,0 +1,41 @@
+.App {
+  text-align: center;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .MainContent {
+    flex-direction: column;
+  }
+
+  .Header {
+    padding: 1rem;
+  }
+
+  .Title {
+    font-size: 1.5rem;
+  }
+
+  .ConnectButton,
+  .BuyButton {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
+}
+
+/* 动画效果 */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 210, 255, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(0, 210, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 210, 255, 0);
+  }
+}
+
+.BuyButton:not(:disabled):hover {
+  animation: pulse 1.5s infinite;
+}

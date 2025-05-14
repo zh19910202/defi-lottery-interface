@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="基于以太坊的去中心化彩票应用" />
+  <title>DeFi 彩票系统</title>
+  <!-- 导入字体 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- 导入图标 -->
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+  <!-- 应用样式 -->
+  <style>
+    /* 初始样式，防止闪烁 */
+    body {
+      background-color: #040c1f;
+      color: #e9eeff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+    #root {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 加载动画 */
+    .app-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #040c1f;
+      z-index: 9999;
+    }
+
+    .app-loader-spinner {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 4px solid rgba(103, 128, 255, 0.1);
+      border-top-color: #4a7cff;
+      animation: spin 1s infinite linear;
+    }
+
+    .app-loader-text {
+      margin-top: 20px;
+      color: #b3c0e6;
+      font-size: 1rem;
+    }
+
+    @keyframes spin {
+      from {
+        transform: rotate(0deg);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root">
+    <!-- 初始加载动画 -->
+    <div class="app-loader">
+      <div class="app-loader-spinner"></div>
+      <div class="app-loader-text">加载中...</div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
+</html>
