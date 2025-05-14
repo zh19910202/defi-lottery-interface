@@ -126,7 +126,7 @@ export const WalletProvider = ({ children }) => {
 
       // 获取余额
       const balance = await ethersProvider.getBalance(account)
-      setBalance(ethers.utils.formatEther(balance))
+      setBalance(ethers.formatEther(balance))
 
       // 设置签名者
       const signer = ethersProvider.getSigner()
@@ -186,7 +186,7 @@ export const WalletProvider = ({ children }) => {
     if (status === WALLET_STATUS.CONNECTED && provider && account) {
       try {
         const balance = await provider.getBalance(account)
-        setBalance(ethers.utils.formatEther(balance))
+        setBalance(ethers.formatEther(balance))
       } catch (error) {
         console.error('获取余额失败:', error)
       }

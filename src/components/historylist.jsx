@@ -47,9 +47,7 @@ const HistoryList = () => {
 
     try {
       const history = await getLotteryHistory(1, 5) // 获取第 1 页，10 条记录
-      console.log('获取到的中奖历史:', history)
       if (history) {
-        // 过滤已结束且有中奖者的轮次
         const winners = history
           .filter((round) => round.winner)
           .map((round) => ({

@@ -127,7 +127,7 @@ export const WalletProvider = ({ children }) => {
         history.push({
           roundId: Number(i),
           prizeAmount: round.prizeAmount
-            ? Number(ethers.utils.formatEther(round.prizeAmount)).toFixed(8)
+            ? Number(ethers.formatEther(round.prizeAmount)).toFixed(8)
             : '0',
           winner: round.winner,
           endTime: Number(round.drawTimestamp) * 1000, // 转换为毫秒
