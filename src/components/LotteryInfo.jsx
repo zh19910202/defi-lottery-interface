@@ -30,7 +30,6 @@ const LotteryInfo = () => {
   const [nextDrawTime, setNextDrawDate] = useState(null)
   const [error, setError] = useState(null)
 
-  // 模拟倒计时
   useEffect(() => {
     let timer
 
@@ -108,16 +107,17 @@ const LotteryInfo = () => {
     const fetchParticipants = async () => {
       try {
         const participantsCount = await getParticipantsCount()
-        setParticipants(participantsCount.toString()) // 防止 BigInt 渲染错误
+        console.log('获取到的参与人数:', participantsCount)
+        setParticipants(participantsCount) // 防止 BigInt 渲染错误
       } catch (err) {
         console.error('获取参与人数失败:', err)
         setParticipants(null)
       } finally {
         setIsLoading(false)
       }
-      if (provider && getParticipantsCount && networkId()) {
-        fetchParticipants()
-      }
+    }
+    if ((provider && getParticipantsCount, networkId)) {
+      fetchParticipants()
     }
   }, [provider, getParticipantsCount, networkId])
   return (

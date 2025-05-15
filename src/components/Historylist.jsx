@@ -1,20 +1,26 @@
-import React, { useContext, useState } from 'react'
+import React, { useContext, useState, useEffect } from 'react'
 import styled, { keyframes } from 'styled-components'
 import { WalletContext } from './WalletContext'
-import { useEffect } from 'react'
 import { ethers } from 'ethers'
 import { toast } from 'react-toastify'
 
 // 中奖历史组件
 const HistoryList = () => {
-  const { formatAddress, isNetworkSupported, getLotteryHistory } =
-    useContext(WalletContext)
+  const { 
+    formatAddress, 
+    isNetworkSupported, 
+    getLotteryHistory, 
+    contracts, 
+    walletStatus, 
+    switchNetwork, 
+    TARGET_NETWORK_ID 
+  } = useContext(WalletContext)
 
   // 状态管理
   const [winnerHistory, setWinnerHistory] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
- 
+  const [claimingRounds, setClaimingRounds] = useState({}) // 跟踪正在领取的轮次
 
   // 格式化时间
   const formatTime = (timestamp) => {
@@ -41,7 +47,7 @@ const HistoryList = () => {
     setError(null)
 
     try {
-      const history = await getLotteryHistory(1, 5) // 获取第 1 页，10 条记录
+      const history = await getLotteryHistory(1, 5) // 获取第 1 页，5 条记录
       if (history) {
         const winners = history
           .filter((round) => round.winner)
@@ -49,6 +55,8 @@ const HistoryList = () => {
             winner: round.winner,
             timestamp: round.endTime,
             amount: round.prizeAmount,
+            isClaimed: round.isClaimed,
+            roundId: round.roundId, // 假设历史记录包含轮次ID
           }))
         setWinnerHistory(winners)
       } else {
@@ -59,6 +67,56 @@ const HistoryList = () => {
       setError('获取中奖历史失败')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // 领取奖金
+  const handleClaim = async (roundId) => {
+    if (walletStatus !== 'connected') {
+      toast.error('请先连接钱包')
+      return
+    }
+    if (!isNetworkSupported()) {
+      toast.error('请切换到支持的网络')
+      await switchNetwork(TARGET_NETWORK_ID)
+      return
+    }
+    if (!contracts.lotteryRouter) {
+      toast.error('彩票合约不可用')
+      return
+    }
+
+    setClaimingRounds((prev) => ({ ...prev, [roundId]: true }))
+
+    try {
+      const tx = await contracts.lotteryRouter.claimPrize(roundId)
+      toast.info('正在领取奖金，请在钱包中确认...')
+      const receipt = await tx.wait(2) // 等待 2 个确认
+
+      if (receipt.status === 1) {
+        toast.success('奖金领取成功！')
+        // 更新该轮次的领取状态
+        setWinnerHistory((prev) =>
+          prev.map((item) =>
+            item.roundId === roundId ? { ...item, isClaimed: true } : item
+          )
+        )
+      } else {
+        throw new Error('交易失败')
+      }
+    } catch (err) {
+      console.error('领取奖金失败:', err)
+      let errorMsg = '领取奖金失败'
+      if (err.code === 4001) {
+        errorMsg = '您取消了交易'
+      } else if (err.reason) {
+        errorMsg = err.reason
+      } else if (err.message) {
+        errorMsg = err.message
+      }
+      toast.error(`领取奖金失败: ${errorMsg}`)
+    } finally {
+      setClaimingRounds((prev) => ({ ...prev, [roundId]: false }))
     }
   }
 
@@ -92,9 +150,21 @@ const HistoryList = () => {
                 </WinnerAddress>
                 <WinTime>{formatTime(item.timestamp)}</WinTime>
               </WinnerDetails>
-              <WinAmount>
-                {parseFloat(item.amount).toFixed(4)} <span>ETH</span>
-              </WinAmount>
+              <WinInfo>
+                <WinAmount>
+                  {parseFloat(item.amount).toFixed(4)} <span>ETH</span>
+                </WinAmount>
+                {item.isClaimed ? (
+                  <ClaimedStatus>已领奖</ClaimedStatus>
+                ) : (
+                  <ClaimButton
+                    onClick={() => handleClaim(item.roundId)}
+                    disabled={claimingRounds[item.roundId]}
+                  >
+                    {claimingRounds[item.roundId] ? '处理中...' : '领取奖金'}
+                  </ClaimButton>
+                )}
+              </WinInfo>
             </HistoryItem>
           ))}
         </List>
@@ -113,7 +183,7 @@ const HistoryList = () => {
         <InfoContent>
           <InfoTitle>中奖规则</InfoTitle>
           <InfoDesc>
-            每当合约条件满足时，系统将自动随机选择一名参与者作为获胜者。获胜者将获得奖池中的全部金额！
+            每当合约条件满足时，系统将自动随机选择一名参与者作为获胜者。获胜者将获得奖池中的全部金额！请及时领取您的奖金。
           </InfoDesc>
         </InfoContent>
       </InfoCard>
@@ -230,6 +300,13 @@ const WinTime = styled.div`
   font-size: 0.8rem;
 `
 
+const WinInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+`
+
 const WinAmount = styled.div`
   font-size: 1.2rem;
   font-weight: 700;
@@ -242,6 +319,62 @@ const WinAmount = styled.div`
     font-size: 0.9rem;
     opacity: 0.9;
   }
+`
+
+const ClaimButton = styled.button`
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius-md);
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+
+  &:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.2),
+      transparent
+    );
+    animation: ${shimmer} 3s infinite;
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    background: linear-gradient(90deg, #3a6ae6, #6780ff);
+  }
+`
+
+const ClaimedStatus = styled.div`
+  color: #2ed573;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius-md);
+  background: rgba(46, 213, 115, 0.1);
+  border: 1px solid rgba(46, 213, 115, 0.3);
 `
 
 const EmptyState = styled.div`
@@ -258,7 +391,7 @@ const EmptyState = styled.div`
 const EmptyIcon = styled.div`
   font-size: 3rem;
   margin-bottom: var(--spacing-md);
-  animation: ${pulse} 2s infinite ease-in-out;
+  animation: ${pulse} 24s infinite ease-in-out;
 `
 
 const EmptyText = styled.div`

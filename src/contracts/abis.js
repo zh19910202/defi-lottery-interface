@@ -27,5 +27,10 @@ export const PRIZE_POOL_ABI = [
 
 // Vault合约ABI
 export const VAULT_ABI = [
-  'function getCurrentTotalParticipantCount(uint256 roundId) external view returns (uint256)'
+  'function getCurrentTotalParticipantCount() external view returns (uint256)'
+]
+
+export const WETH_ABI = [
+  'function approve(address guy, uint wad) external returns (bool)',
+  'function allowance(address src, address guy) external view returns (uint256)'
 ]

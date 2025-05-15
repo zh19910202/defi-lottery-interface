@@ -16,6 +16,7 @@ const LotteryForm = () => {
     getPrizePoolAmount,
     provider,
     networkId,
+    signer,
   } = useContext(WalletContext)
 
   // 本地状态
@@ -142,7 +143,29 @@ const LotteryForm = () => {
 
     try {
       const amountWei = ethers.parseEther(betAmount)
-      console.log('amountWei:', amountWei)
+
+      // 检查WETH授权额度
+      if (!contracts.weth) {
+        toast.error('WETH合约不可用')
+        setIsBuying(false)
+        return
+      }
+      const allowance = await contracts.weth.allowance(
+        contracts.lotteryRouter.runner.address,
+        contracts.lotteryRouter.target
+      )
+
+      if (allowance < amountWei) {
+        // 授权最大额度
+        const approveTx = await contracts.weth.approve(
+          contracts.lotteryRouter.target,
+          ethers.MaxUint256
+        )
+        toast.info('正在授权WETH，请在钱包中确认...')
+        await approveTx.wait(1)
+        toast.success('WETH授权成功')
+      }
+      // 继续购买彩票
       const tx = await contracts.lotteryRouter.deposit(amountWei)
       setTxHash(tx.hash)
 
@@ -180,7 +203,7 @@ const LotteryForm = () => {
     if (provider && contracts.prizePool && isNetworkSupported()) {
       fetchPrizePoolAmount()
     }
-  }, [provider, contracts.prizePool, networkId])
+  }, [provider, contracts.prizePool, networkId, signer])
 
   return (
     <Container className="float">

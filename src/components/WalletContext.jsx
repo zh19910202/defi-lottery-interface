@@ -11,6 +11,8 @@ import {
   LOTTERY_ABI,
   LOTTERY_ROUTER_ABI,
   PRIZE_POOL_ABI,
+  VAULT_ABI,
+  WETH_ABI,
 } from '../contracts/abis'
 import {
   getNetworkName,
@@ -41,52 +43,328 @@ export const WalletProvider = ({ children }) => {
     lotteryRouter: null,
     prizePool: null,
     vault: null,
+    weth: null,
   })
+  const [isConnected, setIsConnected] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
+
+  // 格式化地址显示
+  const formatAddress = useCallback((address) => {
+    return address
+      ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}`
+      : ''
+  }, [])
+
+  // 初始化检查
+  useEffect(() => {
+    const checkConnection = async () => {
+      if (window.ethereum) {
+        try {
+          const accounts = await window.ethereum.request({
+            method: 'eth_accounts',
+          })
+          if (accounts.length > 0 && !userDisconnected) {
+            setIsConnecting(true)
+            await connectWallet(true) // 静默连接
+            setIsConnected(true)
+          }
+        } catch (error) {
+          console.error('自动连接失败:', error)
+        } finally {
+          setIsConnecting(false)
+        }
+      }
+    }
+
+    checkConnection()
+  }, [])
+
+  // 合约初始化
+  const initializeContracts = useCallback(
+    async (signerInstance, providerInstance, chainId) => {
+      try {
+        const addresses = getContractAddresses(chainId)
+        if (
+          !addresses ||
+          !addresses.LOTTERY ||
+          !addresses.LOTTERY_ROUTER ||
+          !addresses.PRIZE_POOL ||
+          !addresses.VAULT ||
+          !addresses.WETH
+        ) {
+          throw new Error(`无效的合约地址: Chain ID ${chainId}`)
+        }
+
+        const initContract = (address, abi, provider) =>
+          address ? new ethers.Contract(address, abi, provider) : null
+
+        setContracts({
+          lottery: initContract(addresses.LOTTERY, LOTTERY_ABI, signerInstance),
+          lotteryRouter: initContract(
+            addresses.LOTTERY_ROUTER,
+            LOTTERY_ROUTER_ABI,
+            signerInstance
+          ),
+          prizePool: initContract(
+            addresses.PRIZE_POOL,
+            PRIZE_POOL_ABI,
+            providerInstance
+          ),
+          vault: initContract(addresses.VAULT, VAULT_ABI, providerInstance),
+          weth: initContract(addresses.WETH, WETH_ABI, signerInstance),
+        })
+      } catch (error) {
+        console.error('合约初始化失败:', error)
+        toast.error('无法初始化合约实例')
+      }
+    },
+    []
+  )
+
+  // 处理账户变化
+  const handleAccountsChanged = useCallback(
+    async (accounts) => {
+      if (!accounts || accounts.length === 0) {
+        disconnectWallet()
+        return
+      }
+
+      const newAccount = accounts[0]
+      if (newAccount === connectedAccount) return
+
+      try {
+        const web3Provider = new ethers.BrowserProvider(window.ethereum)
+        const signerInstance = await web3Provider.getSigner()
+        const chainIdHex = await window.ethereum.request({
+          method: 'eth_chainId',
+        })
+        const currentChainId = parseInt(chainIdHex, 16)
+
+        // 批量更新状态
+        setConnectedAccount(newAccount)
+        setProvider(web3Provider)
+        setSigner(signerInstance)
+        setNetworkId(currentChainId)
+        setNetworkName(getNetworkName(currentChainId))
+
+        await initializeContracts(signerInstance, web3Provider, currentChainId)
+
+        //toast.success(`账户已切换至: ${formatAddress(newAccount)}`)
+      } catch (error) {
+        console.error('账户切换处理失败:', error)
+        toast.error('账户状态更新失败')
+      }
+    },
+    [connectedAccount, initializeContracts, formatAddress]
+  )
+
+  // 处理网络变化
+  const handleChainChanged = useCallback(
+    async (chainIdHex) => {
+      const newChainId = parseInt(chainIdHex, 16)
+      if (newChainId === networkId) return
+
+      try {
+        const web3Provider = new ethers.BrowserProvider(window.ethereum)
+        const signerInstance = await web3Provider.getSigner()
+
+        // 更新网络相关状态
+        setNetworkId(newChainId)
+        setNetworkName(getNetworkName(newChainId))
+
+        if (connectedAccount) {
+          await initializeContracts(signerInstance, web3Provider, newChainId)
+          toast.info(`网络已切换至: ${getNetworkName(newChainId)}`)
+        }
+      } catch (error) {
+        console.error('网络切换处理失败:', error)
+        toast.error('网络状态更新失败')
+      }
+    },
+    [connectedAccount, networkId, initializeContracts]
+  )
+
+  // 连接钱包
+  const connectWallet = useCallback(
+    async (silent = false) => {
+      if (!window.ethereum?.request) {
+        if (!silent) toast.error('请安装MetaMask插件')
+        setHasWallet(false)
+        return
+      }
+
+      try {
+        localStorage.removeItem('userDisconnectedWallet')
+        setUserDisconnected(false)
+        setIsConnecting(true)
+        setIsLoading(true)
+
+        const accounts = await window.ethereum.request({
+          method: 'eth_requestAccounts',
+        })
+        if (accounts.length > 0) {
+          const web3Provider = new ethers.BrowserProvider(window.ethereum)
+          const signerInstance = await web3Provider.getSigner()
+          const chainIdHex = await window.ethereum.request({
+            method: 'eth_chainId',
+          })
+          const chainId = parseInt(chainIdHex, 16)
+
+          // 更新所有相关状态
+          setIsConnected(true)
+          setWalletStatus('connected')
+          setConnectedAccount(accounts[0])
+          setHasWallet(true)
+          setNetworkId(chainId)
+          setNetworkName(getNetworkName(chainId))
+          setProvider(web3Provider)
+          setSigner(signerInstance)
+
+          await initializeContracts(signerInstance, web3Provider, chainId)
+
+          if (!isSupportedNetwork(chainId)) {
+            await switchNetwork(TARGET_NETWORK_ID)
+          }
+
+          if (!silent) {
+            toast.success(`连接成功: ${formatAddress(accounts[0])}`)
+          }
+        }
+      } catch (error) {
+        setIsConnected(false)
+        console.error('连接失败:', error)
+        if (!silent) {
+          const errorMsg =
+            error.code === 4001 ? '已取消连接' : error.message || '连接失败'
+          toast.error(errorMsg)
+        }
+        setHasWallet(false)
+      } finally {
+        setIsLoading(false)
+        setIsConnecting(false)
+      }
+    },
+    [initializeContracts, formatAddress]
+  )
+
+  // 断开连接
+  const disconnectWallet = useCallback(() => {
+    localStorage.setItem('userDisconnectedWallet', 'true')
+    setUserDisconnected(true)
+    setIsConnected(false)
+    setWalletStatus('disconnected')
+    setConnectedAccount(null)
+    setProvider(null)
+    setSigner(null)
+    setNetworkId(null)
+    setNetworkName(null)
+    setContracts({
+      lottery: null,
+      lotteryRouter: null,
+      prizePool: null,
+      vault: null,
+      weth: null,
+    })
+    toast.info('钱包已断开')
+  }, [])
+
+  // 切换网络
+  const switchNetwork = useCallback(
+    async (targetChainId = TARGET_NETWORK_ID) => {
+      if (!window.ethereum) return false
+
+      try {
+        await window.ethereum.request({
+          method: 'wallet_switchEthereumChain',
+          params: [{ chainId: `0x${targetChainId.toString(16)}` }],
+        })
+        return true
+      } catch (error) {
+        if (error.code === 4902) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [SUPPORTED_NETWORKS[targetChainId]],
+            })
+            return true
+          } catch (addError) {
+            toast.error('添加网络失败')
+            return false
+          }
+        }
+        toast.error('网络切换取消')
+        return false
+      }
+    },
+    []
+  )
+
+  // 自动连接处理
+  useEffect(() => {
+    const checkAutoConnect = async () => {
+      if (userDisconnected || !window.ethereum) return
+
+      try {
+        const accounts = await window.ethereum.request({
+          method: 'eth_accounts',
+        })
+        if (accounts.length > 0) {
+          await handleAccountsChanged(accounts)
+        }
+      } catch (error) {
+        console.error('自动连接失败:', error)
+      }
+    }
+
+    checkAutoConnect()
+  }, [userDisconnected, handleAccountsChanged])
+
+  // 事件监听设置
+  useEffect(() => {
+    if (!window.ethereum?.on) return
+
+    window.ethereum.on('accountsChanged', handleAccountsChanged)
+    window.ethereum.on('chainChanged', handleChainChanged)
+
+    return () => {
+      window.ethereum?.removeListener('accountsChanged', handleAccountsChanged)
+      window.ethereum?.removeListener('chainChanged', handleChainChanged)
+    }
+  }, [handleAccountsChanged, handleChainChanged])
+
+  const isNetworkSupported = useCallback(() => {
+    return isSupportedNetwork(networkId)
+  }, [networkId])
 
   // 查询奖池余额
-  const getPrizePoolAmount = async () => {
-    if (!provider || !contracts.prizePool) {
-      return null
-    }
-    if (!isSupportedNetwork(networkId)) {
-      return null
-    }
+  const getPrizePoolAmount = useCallback(async () => {
+    if (!contracts.prizePool || !isSupportedNetwork(networkId)) return null
 
     try {
       const amount = await contracts.prizePool.getPrizePoolAmount()
-      // 确保amount不是undefined，并使用正确的formatEther方法
-      if (!amount) {
-        console.error('奖池余额为空')
-        return '0'
-      }
-      console.log('奖池余额:', ethers.formatEther(amount))
-      return parseFloat(ethers.formatEther(amount)).toFixed(8)
+      return amount ? parseFloat(ethers.formatEther(amount)).toFixed(8) : '0'
     } catch (err) {
-      console.error('获取奖池余额失败:', err)
-      const errorMsg = err.reason || err.message || '获取奖池余额失败'
-      toast.error(`获取奖池余额失败: ${errorMsg}`)
+      console.error('获取奖池失败:', err)
+      toast.error(err.reason || '获取奖池信息失败')
       return null
     }
-  }
+  }, [contracts.prizePool, networkId])
 
   //查询当前轮次
   const getCurrentRoundId = async () => {
     if (!provider || !contracts.lottery) {
-      
       return null
     }
     if (!isSupportedNetwork(networkId)) {
-      
       return null
     }
     try {
       const currentId = await contracts.lottery.getCurrentRoundId()
-
       return currentId
     } catch (err) {
       console.error('获取当前轮次失败:', err)
       const errorMsg = err.reason || err.message || '获取当前轮次失败'
-      
+
       return null
     }
   }
@@ -94,11 +372,9 @@ export const WalletProvider = ({ children }) => {
   //查询历史中奖记录
   const getLotteryHistory = async (page = 1, pageSize = 5) => {
     if (!provider || !contracts.lottery) {
-      
       return null
     }
     if (!isSupportedNetwork(networkId)) {
-      
       return null
     }
 
@@ -107,7 +383,6 @@ export const WalletProvider = ({ children }) => {
       const currentId = await contracts.lottery.getCurrentRoundId()
       const currentIdNum = currentId.toString()
       if (currentIdNum < 0) {
-        
         return []
       }
 
@@ -138,7 +413,7 @@ export const WalletProvider = ({ children }) => {
     } catch (err) {
       console.error('获取彩票历史失败:', err)
       const errorMsg = err.reason || err.message || '获取彩票历史失败'
-      
+
       return null
     }
   }
@@ -146,11 +421,9 @@ export const WalletProvider = ({ children }) => {
   // 查询下次开奖时间
   const getNextDrawTimestamp = async () => {
     if (!provider || !contracts.lottery) {
-      
       return null
     }
     if (!isSupportedNetwork(networkId)) {
-      
       return null
     }
 
@@ -160,20 +433,18 @@ export const WalletProvider = ({ children }) => {
     } catch (err) {
       console.error('获取下次开奖时间失败:', err)
       const errorMsg = err.reason || err.message || '获取下次开奖时间失败'
-      
+
       return null
     }
   }
 
   // 查询当前轮次参与人数
 
-  const getParticipantsCount = async (roundId) => {
+  const getParticipantsCount = async () => {
     if (!provider || !contracts.lottery) {
-      
       return null
     }
     if (!isSupportedNetwork(networkId)) {
-      
       return null
     }
     try {
@@ -182,255 +453,10 @@ export const WalletProvider = ({ children }) => {
     } catch (err) {
       console.error('获取参与人数失败:', err)
       const errorMsg = err.reason || err.message || '获取参与人数失败'
-      
+
       return null
     }
   }
-
-  const connectWallet = async (silent = false) => {
-    if (!window.ethereum || typeof window.ethereum.request !== 'function') {
-      if (!silent) {
-        toast.error('未检测到MetaMask或其他钱包! 请安装MetaMask插件')
-      }
-      setHasWallet(false)
-      return
-    }
-    try {
-      localStorage.removeItem('userDisconnectedWallet')
-      setUserDisconnected(false)
-      setIsLoading(true)
-      const accounts = await window.ethereum.request({
-        method: 'eth_requestAccounts',
-      })
-      if (accounts.length > 0) {
-        setWalletStatus('connected')
-        setConnectedAccount(accounts[0])
-        setHasWallet(true)
-        const chainIdHex = await window.ethereum.request({
-          method: 'eth_chainId',
-        })
-        const chainId = parseInt(chainIdHex, 16)
-        setNetworkId(chainId)
-        setNetworkName(getNetworkName(chainId))
-        const web3Provider = new ethers.BrowserProvider(window.ethereum)
-        setProvider(web3Provider)
-        const signerInstance = await web3Provider.getSigner()
-        setSigner(signerInstance)
-        await initializeContracts(signerInstance, web3Provider, chainId)
-        if (!isSupportedNetwork(chainId)) {
-          await switchNetwork(TARGET_NETWORK_ID)
-        }
-        if (!silent) {
-          toast.success(`钱包连接成功! 账户: ${formatAddress(accounts[0])}`)
-        }
-      }
-    } catch (error) {
-      console.error('连接钱包失败:', error)
-      let errorMsg = '连接钱包失败'
-      if (error.code === 4001) {
-        errorMsg = '您拒绝了连接请求'
-      } else if (error.code === -32002) {
-        errorMsg = '连接请求已在处理中'
-      } else if (error.message) {
-        errorMsg = error.message
-      }
-      if (!silent) {
-        toast.error(errorMsg)
-      }
-      setHasWallet(false)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const initializeContracts = async (
-    signerInstance,
-    providerInstance,
-    chainId
-  ) => {
-    try {
-      const addresses = getContractAddresses(chainId)
-      if (
-        !addresses ||
-        !addresses.LOTTERY ||
-        !addresses.LOTTERY_ROUTER ||
-        !addresses.PRIZE_POOL
-      ) {
-        throw new Error(`无效的合约地址: Chain ID ${chainId}`)
-      }
-      const lotteryInstance = new ethers.Contract(
-        addresses.LOTTERY,
-        LOTTERY_ABI,
-        signerInstance
-      )
-      const lotteryRouterInstance = new ethers.Contract(
-        addresses.LOTTERY_ROUTER,
-        LOTTERY_ROUTER_ABI,
-        signerInstance
-      )
-      const prizePoolInstance = new ethers.Contract(
-        addresses.PRIZE_POOL,
-        PRIZE_POOL_ABI,
-        providerInstance // 使用 provider 以优化读操作
-      )
-      // const vaultInstance = new ethers.Contract(
-      //   addresses.VAULT,
-      //   VAULT_ABI,
-      //   providerInstance // 使用 provider 以优化读操作
-      // )
-
-      setContracts({
-        lottery: lotteryInstance,
-        lotteryRouter: lotteryRouterInstance,
-        prizePool: prizePoolInstance,
-        // vault: vaultInstance,
-      })
-    } catch (error) {
-      console.error('初始化合约实例失败:', error)
-      toast.error('无法初始化合约实例')
-    }
-  }
-
-  const disconnectWallet = () => {
-    localStorage.setItem('userDisconnectedWallet', 'true')
-    setUserDisconnected(true)
-    setWalletStatus('disconnected')
-    setConnectedAccount(null)
-    setProvider(null)
-    setSigner(null)
-    setNetworkId(null)
-    setNetworkName(null)
-    setContracts({
-      lottery: null,
-      lotteryRouter: null,
-      prizePool: null,
-    })
-    toast.info('已断开钱包连接')
-  }
-
-  const switchNetwork = async (targetChainId = TARGET_NETWORK_ID) => {
-    if (!window.ethereum) return false
-    try {
-      await window.ethereum.request({
-        method: 'wallet_switchEthereumChain',
-        params: [{ chainId: `0x${targetChainId.toString(16)}` }],
-      })
-      return true
-    } catch (error) {
-      console.error('切换网络失败:', error)
-      if (error.code === 4902) {
-        try {
-          await window.ethereum.request({
-            method: 'wallet_addEthereumChain',
-            params: [
-              {
-                chainId: `0x${targetChainId.toString(16)}`,
-                chainName: getNetworkName(targetChainId),
-                rpcUrls: ['https://rpc.sepolia.org'],
-                nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
-                blockExplorerUrls: ['https://sepolia.etherscan.io'],
-              },
-            ],
-          })
-          return true
-        } catch (addError) {
-          toast.error('添加网络失败')
-          return false
-        }
-      }
-      toast.error('切换网络失败')
-      return false
-    }
-  }
-
-  const formatAddress = (address) => {
-    return address
-      ? `${address.substring(0, 6)}...${address.substring(address.length - 4)}`
-      : ''
-  }
-
-  const checkCurrentChain = async () => {
-    if (window.ethereum) {
-      try {
-        const chainIdHex = await window.ethereum.request({
-          method: 'eth_chainId',
-        })
-        return parseInt(chainIdHex, 16)
-      } catch (error) {
-        console.error('获取链ID失败:', error)
-        return null
-      }
-    }
-    return null
-  }
-
-  const isNetworkSupported = useCallback(() => {
-    return isSupportedNetwork(networkId)
-  }, [networkId])
-
-  useEffect(() => {
-    if (!window.ethereum) return
-    const handleAccountsChanged = (accounts) => {
-      if (accounts.length === 0) {
-        if (walletStatus !== 'disconnected') {
-          disconnectWallet()
-        }
-      } else if (
-        accounts[0] !== connectedAccount &&
-        connectedAccount !== null
-      ) {
-        setConnectedAccount(accounts[0])
-        toast.info(`账户已切换: ${formatAddress(accounts[0])}`)
-      } else if (accounts[0] !== connectedAccount) {
-        setConnectedAccount(accounts[0])
-      }
-    }
-    const handleChainChanged = async (chainIdHex) => {
-      const newChainId = parseInt(chainIdHex, 16)
-      const newNetworkName = getNetworkName(newChainId)
-      if (newNetworkName !== networkName) {
-        setNetworkId(newChainId)
-        setNetworkName(newNetworkName)
-        if (networkName !== null) {
-          toast.info(`网络已切换: ${newNetworkName}`)
-        }
-        if (connectedAccount) {
-          try {
-            const web3Provider = new ethers.BrowserProvider(window.ethereum)
-            setProvider(web3Provider)
-            const signerInstance = await web3Provider.getSigner()
-            setSigner(signerInstance)
-            await initializeContracts(signerInstance, web3Provider, newChainId)
-          } catch (err) {
-            console.error('网络切换后初始化失败:', err)
-          }
-        }
-      }
-    }
-    window.ethereum.on('accountsChanged', handleAccountsChanged)
-    window.ethereum.on('chainChanged', handleChainChanged)
-    const checkInitialConnection = async () => {
-      if (userDisconnected) return
-      try {
-        const accounts = await window.ethereum.request({
-          method: 'eth_accounts',
-        })
-        if (accounts.length > 0 && walletStatus === 'disconnected') {
-          connectWallet(true)
-        }
-      } catch (error) {
-        console.error('检查初始连接状态失败:', error)
-        toast.error('无法检查钱包连接状态')
-      }
-    }
-    checkInitialConnection()
-    return () => {
-      if (window.ethereum && window.ethereum.removeListener) {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged)
-        window.ethereum.removeListener('chainChanged', handleChainChanged)
-      }
-    }
-  }, [userDisconnected])
 
   const contextValue = useMemo(
     () => ({
@@ -438,23 +464,38 @@ export const WalletProvider = ({ children }) => {
       signer,
       isLoading,
       walletStatus,
+      isConnected,
+      setIsConnected,
+      isConnecting,
+      setIsConnecting,
       hasWallet,
       connectedAccount,
       networkId,
       networkName,
       contracts,
-      connectWallet,
-      disconnectWallet,
-      switchNetwork,
       formatAddress,
-      checkCurrentChain,
       isNetworkSupported,
       TARGET_NETWORK_ID,
       SUPPORTED_NETWORKS,
-      getPrizePoolAmount, // 新增查询方法
+
+      connectWallet,
+      disconnectWallet,
+      switchNetwork,
+      getPrizePoolAmount,
       getCurrentRoundId,
-      getLotteryHistory,
+      getParticipantsCount,
       getNextDrawTimestamp,
+      getLotteryHistory,
+
+      // 添加状态刷新方法
+      refreshWalletState: async () => {
+        if (window.ethereum && connectedAccount) {
+          const accounts = await window.ethereum.request({
+            method: 'eth_accounts',
+          })
+          await handleAccountsChanged(accounts)
+        }
+      },
     }),
     [
       provider,
@@ -463,9 +504,21 @@ export const WalletProvider = ({ children }) => {
       walletStatus,
       hasWallet,
       connectedAccount,
+      isConnected,
+      isConnecting,
+      getNextDrawTimestamp,
+      getLotteryHistory,
       networkId,
+      isNetworkSupported,
+      getParticipantsCount,
       networkName,
       contracts,
+      formatAddress,
+      connectWallet,
+      disconnectWallet,
+      switchNetwork,
+      getPrizePoolAmount,
+      getCurrentRoundId,
     ]
   )
 

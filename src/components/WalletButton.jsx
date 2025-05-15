@@ -7,6 +7,7 @@ import { getRecommendedNetworkId } from '../utils/contract'
 const WalletButton = () => {
   const {
     isConnected,
+    setIsConnected,
     isConnecting,
     connect,
     disconnect,
@@ -31,6 +32,20 @@ const WalletButton = () => {
   const handleSwitchNetwork = () => {
     switchNetwork(getRecommendedNetworkId())
   }
+
+  // 添加连接状态同步
+  useEffect(() => {
+    const handleAccountsChanged = (accounts) => {
+      if (accounts.length === 0) {
+        setIsConnected(false)
+      }
+    }
+
+    window.ethereum?.on('accountsChanged', handleAccountsChanged)
+    return () => {
+      window.ethereum?.removeListener('accountsChanged', handleAccountsChanged)
+    }
+  }, [])
 
   // 根据连接状态显示不同的UI
   if (isConnected) {
