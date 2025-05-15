@@ -81,7 +81,7 @@ export const WalletProvider = ({ children }) => {
   // 初始化提供者
   const initializeProvider = useCallback(() => {
     if (checkIfWalletIsAvailable()) {
-      const ethersProvider = new ethers.providers.Web3Provider(window.ethereum)
+      const ethersProvider = new ethers.BrowserProvider(window.ethereum)
       setProvider(ethersProvider)
       return ethersProvider
     }
@@ -307,7 +307,6 @@ export const WalletProvider = ({ children }) => {
           try {
             const ethersProvider = new ethers.BrowserProvider(window.ethereum)
             setProvider(ethersProvider)
-
             const signerInstance = await ethersProvider.getSigner()
             setSigner(signerInstance)
 
