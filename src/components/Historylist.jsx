@@ -37,11 +37,6 @@ const HistoryList = () => {
 
   // 获取中奖历史
   const fetchWinnerHistory = async () => {
-    if (!isNetworkSupported()) {
-      setError('当前网络不支持')
-      return
-    }
-
     setIsLoading(true)
     setError(null)
 
@@ -70,7 +65,7 @@ const HistoryList = () => {
   // 组件挂载时获取数据
   useEffect(() => {
     fetchWinnerHistory()
-  }, [isNetworkSupported])
+  }, [getLotteryHistory])
 
   return (
     <Container className="float">
