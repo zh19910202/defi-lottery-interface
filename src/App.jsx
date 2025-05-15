@@ -6,7 +6,7 @@ import './App.css'
 import ErrorBoundary from './components/ErrorBoundary'
 import WalletStatus from './components/WalletStatus'
 import LotteryForm from './components/LotteryForm'
-import HistoryList from './components/HistoryList'
+import HistoryList from './components/Historylist'
 import LotteryInfo from './components/LotteryInfo'
 import PrizePool from './components/PrizePool'
 
