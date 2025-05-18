@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react'
 import styled, { keyframes } from 'styled-components'
-import { WalletContext } from './WalletContext'
+import { WalletContext } from '../context/walletcontext'
 
 const LotteryInfo = () => {
   const {
@@ -120,6 +120,49 @@ const LotteryInfo = () => {
       fetchParticipants()
     }
   }, [provider, getParticipantsCount, networkId])
+  // 处理开奖逻辑
+  const handleDraw = async () => {
+    if (walletStatus !== 'connected') {
+      toast.error('请先连接钱包')
+      return
+    }
+    if (!isNetworkSupported()) {
+      toast.error('请切换到支持的网络')
+      await switchNetwork(TARGET_NETWORK_ID)
+      return
+    }
+    if (!contracts.lotteryRouter) {
+      toast.error('彩票合约不可用')
+      return
+    }
+
+    try {
+      const tx = await contracts.lotteryRouter.drawWinner()
+      toast.info('正在开奖，请在钱包中确认...')
+      const receipt = await tx.wait(2)
+
+      if (receipt.status === 1) {
+        toast.success('开奖成功！')
+        // 刷新数据
+        const id = await getCurrentRoundId()
+        setCurrentRound(id.toString())
+      } else {
+        throw new Error('交易失败')
+      }
+    } catch (err) {
+      console.error('开奖失败:', err)
+      let errorMsg = '开奖失败'
+      if (err.code === 4001) {
+        errorMsg = '您取消了交易'
+      } else if (err.reason) {
+        errorMsg = err.reason
+      } else if (err.message) {
+        errorMsg = err.message
+      }
+      toast.error(`开奖失败: ${errorMsg}`)
+    }
+  }
+
   return (
     <Container>
       <CardHeader>
@@ -180,6 +223,17 @@ const LotteryInfo = () => {
         <CalendarIcon>📅</CalendarIcon>
         下次开奖: {nextDrawTime ? nextDrawTime.toLocaleString() : '未知'}
       </NextDrawInfo>
+
+      <DrawButtonContainer>
+        <DrawButton
+          onClick={handleDraw}
+          disabled={
+            isLoading ||
+            (nextDrawTime && new Date().getTime() < nextDrawTime.getTime())
+          }>
+          {isLoading ? '处理中...' : '立即开奖'}
+        </DrawButton>
+      </DrawButtonContainer>
     </Container>
   )
 }
@@ -349,6 +403,43 @@ const NextDrawInfo = styled.div`
 
 const CalendarIcon = styled.span`
   font-size: 1rem;
+`
+
+const DrawButtonContainer = styled.div`
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+`
+
+const DrawButton = styled.button`
+  background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
+  color: white;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: var(--border-radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+  width: 100%;
+  max-width: 200px;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
 `
 
 export default LotteryInfo

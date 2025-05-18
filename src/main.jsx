@@ -5,7 +5,7 @@ import './index.css'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import ErrorBoundary from './components/ErrorBoundary'
-import { WalletProvider } from './components/WalletContext'
+import { WalletProvider } from './context/walletcontext'
 
 // 获取根元素
 const root = document.getElementById('root')

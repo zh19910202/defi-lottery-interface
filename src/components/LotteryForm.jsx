@@ -1,7 +1,7 @@
 import React, { useState, useContext, useEffect } from 'react'
 import styled, { keyframes } from 'styled-components'
 import { toast } from 'react-toastify'
-import { WalletContext } from './WalletContext'
+import { WalletContext } from '../context/walletcontext'
 
 import { ethers } from 'ethers'
 

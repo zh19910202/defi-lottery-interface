@@ -20,5 +20,17 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/sepolia-api/, ''),
       }
     }
-  }
+  },
+  // 动态导入配置
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks (id) {
+          if (id.includes('node_modules')) {
+            return 'vendor'  // 将所有库打包为 vendor.js
+          }
+        },
+      },
+    },
+  },
 })

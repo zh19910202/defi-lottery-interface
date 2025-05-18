@@ -1,19 +1,19 @@
 import React, { useContext, useState, useEffect } from 'react'
 import styled, { keyframes } from 'styled-components'
-import { WalletContext } from './WalletContext'
+import { WalletContext } from '../context/walletcontext'
 import { ethers } from 'ethers'
 import { toast } from 'react-toastify'
 
 // 中奖历史组件
 const HistoryList = () => {
-  const { 
-    formatAddress, 
-    isNetworkSupported, 
-    getLotteryHistory, 
-    contracts, 
-    walletStatus, 
-    switchNetwork, 
-    TARGET_NETWORK_ID 
+  const {
+    formatAddress,
+    isNetworkSupported,
+    getLotteryHistory,
+    contracts,
+    walletStatus,
+    switchNetwork,
+    TARGET_NETWORK_ID,
   } = useContext(WalletContext)
 
   // 状态管理
@@ -159,8 +159,7 @@ const HistoryList = () => {
                 ) : (
                   <ClaimButton
                     onClick={() => handleClaim(item.roundId)}
-                    disabled={claimingRounds[item.roundId]}
-                  >
+                    disabled={claimingRounds[item.roundId]}>
                     {claimingRounds[item.roundId] ? '处理中...' : '领取奖金'}
                   </ClaimButton>
                 )}

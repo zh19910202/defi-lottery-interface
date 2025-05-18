@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react'
 import styled, { keyframes } from 'styled-components'
-import { WalletContext } from './WalletContext'
+import { WalletContext } from '../context/walletcontext'
 
 const WalletStatus = () => {
   const {

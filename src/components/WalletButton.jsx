@@ -1,6 +1,6 @@
 import React, { useContext } from 'react'
 import styled from 'styled-components'
-import { WalletContext } from '../context/WalletContext'
+import { WalletContext } from '../context/walletcontext'
 import { getRecommendedNetworkId } from '../utils/contract'
 
 // 钱包连接按钮组件
